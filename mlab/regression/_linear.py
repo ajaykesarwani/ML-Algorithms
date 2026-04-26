@@ -59,12 +59,18 @@ class SGDRegression:
         w = np.zeros((x_expand.shape[1], 1))
         
         for _ in range(self.n_iters):
+            # shuffling data at each iteration to improve convergence speed
+            indices = np.random.permutation(len(x_expand))
+            x_sh = x_expand[indices]
+            y_sh = np.array(y)[indices]
             for batch_num in range(num_batches):
                 start = batch_num * self.batch_size
                 end = (batch_num + 1) * self.batch_size
                 
-                x_expand_batch = x_expand[start:end]
-                y_batch = np.array(y[start:end]).reshape((-1,1))
+                # x_expand_batch = x_expand[start:end]
+                # y_batch = np.array(y[start:end]).reshape((-1,1))
+                x_expand_batch = x_sh[start:end]
+                y_batch = y_sh[start:end].reshape((-1, 1))
                 
                 y_hat = x_expand_batch @ w
                 error = y_batch - y_hat
