@@ -2,6 +2,7 @@ import numpy as np
 class LinearRegression:
     def __init__(self):
         self.weights_ = None  # learned coefficients (set after fit)
+        self.bias_ = None
 
     def fit(self, X, y):
         """
@@ -15,7 +16,9 @@ class LinearRegression:
         X_expand = np.concatenate((np.ones((X.shape[0], 1)), np.array(X)), axis=1)
         X_expand_T = X_expand.T
         # w = (X^T X)^{-1} X^T y
-        self.weights_ = np.linalg.inv(X_expand_T @ X_expand) @ X_expand_T @ y
+        w = np.linalg.inv(X_expand_T @ X_expand) @ X_expand_T @ y
+        self.bias_ = w[0]
+        self.weights_ = w[1:]
 
 
     def predict(self, X):
@@ -29,8 +32,8 @@ class LinearRegression:
             numpy array of shape (n_samples,)
         """
         # Adding bias column to the input X
-        feature_expand = np.concatenate((np.ones((X.shape[0], 1)), np.array(X)), axis=1)
-        return feature_expand @ self.weights_
+        # feature_expand = np.concatenate((np.ones((X.shape[0], 1)), np.array(X)), axis=1)
+        return (X @ self.weights_ + self.bias_).flatten()
 
 class SGDRegression:
     def __init__(self, learning_rate=0.01, n_iterations=1000, batch_size=32):
@@ -96,4 +99,4 @@ class SGDRegression:
             numpy array of shape (n_samples,)
         """
         # y = X*w + b
-        return X @ self.weights_ + self.bias_
+        return (X @ self.weights_ + self.bias_).flatten()
