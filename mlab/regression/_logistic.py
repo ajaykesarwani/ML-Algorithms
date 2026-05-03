@@ -88,6 +88,9 @@ class SGDClassifier:
                 
                 # Updating weights and bias using the error and learning rate
                 m = len(yi)
+                # skip if m is zero
+                if m == 0: continue
+
                 self.weights -= self.learning_rate * (1/m) * (xi.T @ error)
                 self.bias -= self.learning_rate * (1/m) * np.sum(error)
 
