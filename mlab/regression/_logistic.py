@@ -58,8 +58,8 @@ class SGDClassifier:
         self.batch_size = batch_size
 
         # Model parameters
-        self.weights_ = None
-        self.bias_ = None
+        self.weights = None
+        self.bias = None
 
     def fit(self, X, y):
         """Train the model using stochastic gradient descent."""
