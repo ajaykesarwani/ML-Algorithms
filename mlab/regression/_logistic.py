@@ -37,8 +37,9 @@ class LogisticRegression:
         return self
 
     def predict(self, X):
-        """class 1 if probability more than or equal to 0.5 else class 0"""
-        return (self.predict_proba(X) >= 0.5).astype(int)
+        """class 1 if probability more than or equal to 0.3 else class 0"""
+        # to address the imbalance class changing the threshold 
+        return (self.predict_proba(X) >= 0.3).astype(int)
 
     def predict_proba(self, X):
         return sigmoid((X @ self.weights) + self.bias)
@@ -98,5 +99,6 @@ class SGDClassifier:
 
         # Compute probabilities and convert to class labels
         probs = sigmoid((X @ self.weights) + self.bias)
-        # Class 1 if probability more than or equal to 0.5 else class 0
-        return (probs >= 0.5).astype(int)
+        # Class 1 if probability more than or equal to 0.3 else class 0
+        # to address the imbalance class changing the threshold 
+        return (probs >= 0.3).astype(int)
