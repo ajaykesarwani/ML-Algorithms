@@ -2,6 +2,8 @@ import numpy as np
 
 def sigmoid(z):
     """Computes the sigmoid function."""
+    # clip z to prevent overflow
+    z = np.clip(z, -250, 250)
     return 1 / (1 + np.exp(-z))
 
 class LogisticRegression:
