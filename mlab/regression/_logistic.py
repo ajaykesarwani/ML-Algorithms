@@ -6,12 +6,12 @@ def sigmoid(z):
 
 class LogisticRegression:
     def __init__(self, learning_rate=0.01, n_iterations=1000):
-        # Model parameters initialization
-        self.weights_ = None
-        self.bias_ = None
         # Hyperparameters initialization
         self.learning_rate = learning_rate
         self.max_iterations = n_iterations
+        
+        self.weights = None
+        self.bias = None
         self.cost_history = []
 
     def fit(self, X, y):
@@ -52,13 +52,14 @@ class LogisticRegression:
 
 class SGDClassifier:
     def __init__(self, learning_rate=0.01, n_iterations=1000, batch_size=32):
-        # Model parameters
-        self.weights_ = None
-        self.bias_ = None
         # Hyperparameters
         self.learning_rate = learning_rate
         self.n_iterations = n_iterations
         self.batch_size = batch_size
+
+        # Model parameters
+        self.weights_ = None
+        self.bias_ = None
 
     def fit(self, X, y):
         """Train the model using stochastic gradient descent."""
