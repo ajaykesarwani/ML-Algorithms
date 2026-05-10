@@ -17,12 +17,11 @@ class KMeans:
         X = np.array(X)
         n_samples, n_features = X.shape
         
-        # Seed the random number generator for reproduucibility
-        if self.random_state is not None:
-            np.random.seed(self.random_state)
+        # local random generator
+        rng = np.random.RandomState(self.random_state)
 
         # 1. Initialization: Choosing K initial cluster centroids.
-        initial_centroids = np.random.choice(n_samples, self.n_clusters, replace=False)
+        initial_centroids = rng.choice(n_samples, self.n_clusters, replace=False)
         self.cluster_centers_ = X[initial_centroids].copy()
 
         for i in range(self.max_iter):
@@ -38,7 +37,7 @@ class KMeans:
                     self.cluster_centers_[k] = X[mask].mean(axis=0)
                 else:
                     # If a cluster is empty then re-initialize it to a random point
-                    self.cluster_centers_[k] = X[np.random.choice(n_samples)]
+                    self.cluster_centers_[k] = X[rng.choice(n_samples)]
 
             # Convergence Check: Repeat steps 2 and 3 until the centroids no longer change significantly between iterations, or a maximum number of iterations is reached.
             center_shift = np.linalg.norm(self.cluster_centers_ - old_centers)
@@ -72,13 +71,12 @@ class KMeansPlusPlus(KMeans):
         X = np.array(X)
         n_samples, n_features = X.shape
         
-        # Seed the random number generator for reproduucibility
-        if self.random_state is not None:
-            np.random.seed(self.random_state)
+        # local random generator
+        rng = np.random.RandomState(self.random_state)
 
         # 1. Choose the first centroid: Select one data point uniformly at random from the dataset 
         # to be the first centroid
-        centers = [X[np.random.choice(n_samples)]]
+        centers = [X[rng.choice(n_samples)]]
 
         # 2. Choose subsequent centroids: i.e. Picking the remaining k-1 centers
         for _ in range(1, self.n_clusters):
@@ -89,23 +87,20 @@ class KMeansPlusPlus(KMeans):
             
             # 3. Select the next centroid from the data points X with a probability proportional to D(x)^2
             probs = dist_sq / np.sum(dist_sq)
-            cumulative_probs = np.cumsum(probs)
-            r = np.random.rand()
             
             # Find index where cumulative probability exceeds random value r
             # 4. Repeat: Repeat steps 2 and 3 until K centroids have been chosen.
-            next_idx = np.searchsorted(cumulative_probs, r)
+            next_idx = rng.choice(n_samples, p=probs)
             centers.append(X[next_idx])
 
         self.cluster_centers_ = np.array(centers)
 
         # 5. Proceed with K-Means: Once the K initial centroids are selected using K-Means++, 
         # proceed with the standard K-Means algorithm (assignment and update steps) until convergence.
-        return self._kmeans_logic(X)
+        return self._kmeans_logic(X, rng)
 
-    def _kmeans_logic(self, X):
+    def _kmeans_logic(self, X, rng):
         """K-Means iterations after initialization."""
-        n_samples = X.shape[0]
         for i in range(self.max_iter):
             old_centers = self.cluster_centers_.copy()
             
@@ -115,7 +110,9 @@ class KMeansPlusPlus(KMeans):
                 mask = (self.labels_ == k)
                 if np.any(mask):
                     self.cluster_centers_[k] = X[mask].mean(axis=0)
-            
+                else:
+                    self.cluster_centers_[k] = X[rng.choice(X.shape[0])]
+
             if np.linalg.norm(self.cluster_centers_ - old_centers) < self.tol:
                 break
                 
