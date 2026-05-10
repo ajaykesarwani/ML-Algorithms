@@ -76,32 +76,35 @@ class KMeansPlusPlus(KMeans):
         if self.random_state is not None:
             np.random.seed(self.random_state)
 
-        # 1. Choose the first centroid: Select one data point uniformly at random from the dataset to be the first centroid
+        # 1. Choose the first centroid: Select one data point uniformly at random from the dataset 
+        # to be the first centroid
         centers = [X[np.random.choice(n_samples)]]
 
-        # 2. Picking the remaining k-1 centers
+        # 2. Choose subsequent centroids: i.e. Picking the remaining k-1 centers
         for _ in range(1, self.n_clusters):
-            # Calculate the squared distance from each point to the nearest already chosen center
+            # For each data point x in X, calculate D(x)^2, which is the squared distance from x to the 
+            # *nearest* already chosen centroid.
             # D(x)^2
             dist_sq = np.array([min([np.sum((x - c)**2) for c in centers]) for x in X])
             
-            # 3. Choose the next center with probability proportional to D(x)^2
+            # 3. Select the next centroid from the data points X with a probability proportional to D(x)^2
             probs = dist_sq / np.sum(dist_sq)
             cumulative_probs = np.cumsum(probs)
             r = np.random.rand()
             
             # Find index where cumulative probability exceeds random value r
+            # 4. Repeat: Repeat steps 2 and 3 until K centroids have been chosen.
             next_idx = np.searchsorted(cumulative_probs, r)
             centers.append(X[next_idx])
 
         self.cluster_centers_ = np.array(centers)
 
-        # Now that centers are initialized, run the standard K-Means optimization
-        # (This avoids code duplication)
-        return self._run_kmeans_logic(X)
+        # 5. Proceed with K-Means: Once the K initial centroids are selected using K-Means++, 
+        # proceed with the standard K-Means algorithm (assignment and update steps) until convergence.
+        return self._kmeans_logic(X)
 
-    def _run_kmeans_logic(self, X):
-        """Standard K-Means iterations after initialization."""
+    def _kmeans_logic(self, X):
+        """K-Means iterations after initialization."""
         n_samples = X.shape[0]
         for i in range(self.max_iter):
             old_centers = self.cluster_centers_.copy()
