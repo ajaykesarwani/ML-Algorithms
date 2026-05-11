@@ -1,42 +1,35 @@
 import numpy as np
 class LinearRegression:
-    def __init__(self):
+    def __init__(self, alpha=1e-5):
         self.weights_ = None  # learned coefficients (set after fit)
         self.bias_ = None
+        self.alpha = alpha    # Adding for L2 regularization
 
     def fit(self, X, y):
-        """
-        Train the model on the given data.
+        """Train the model on the given data."""
+        X = np.array(X)
 
-        Args:
-            X: numpy array of shape (n_samples, n_features)
-            y: numpy array of shape (n_samples,)
-        """
         # # Adding bias column to the input X
         X_expand = np.concatenate((np.ones((X.shape[0], 1)), np.array(X)), axis=1)
         X_expand_T = X_expand.T
-        # w = (X^T X)^{-1} X^T y
-        w = np.linalg.inv(X_expand_T @ X_expand) @ X_expand_T @ y
+
+        # w = (X^T X + alpha*I)^{-1} X^T y
+        reg_matrix = self.alpha * np.eye(X_expand.shape[1])
+        reg_matrix[0, 0] = 0
+        # w = np.linalg.inv(X_expand_T @ X_expand) @ X_expand_T @ y
+        w = np.linalg.inv(X_expand_T @ X_expand + reg_matrix) @ X_expand_T @ y
         self.bias_ = w[0]
         self.weights_ = w[1:]
 
 
     def predict(self, X):
-        """
-        Predict target values for the given input.
-
-        Args:
-            X: numpy array of shape (n_samples, n_features)
-
-        Returns:
-            numpy array of shape (n_samples,)
-        """
+        """Predict target values for the given input."""
         # Adding bias column to the input X
         # feature_expand = np.concatenate((np.ones((X.shape[0], 1)), np.array(X)), axis=1)
         return (X @ self.weights_ + self.bias_).flatten()
 
 class SGDRegression:
-    def __init__(self, learning_rate=0.01, n_iterations=1000, batch_size=32):
+    def __init__(self, learning_rate=0.01, n_iterations=1000, batch_size=32, alpha=1e-5):
         # Hyperparameter initialization
         self.lr = learning_rate
         self.n_iters = n_iterations
@@ -45,21 +38,24 @@ class SGDRegression:
         self.weights_ = None
         self.bias_ = None
 
+        self.alpha = alpha
+
+
     def fit(self, X, y):
-        """
-        Train the model using stochastic gradient descent.
+        """Train the model using stochastic gradient descent."""
+        X = np.array(X)
 
-        Args:
-            X: numpy array of shape (n_samples, n_features)
-            y: numpy array of shape (n_samples,)
-        """
+        # Data Scaling
+        self.mean_ = np.mean(X, axis=0)
+        self.std_ = np.std(X, axis=0) + 1e-8 
+        X_scaled = (X - self.mean_) / self.std_
+
         # Add bias column to the input X
-        x_expand = np.concatenate((np.ones((X.shape[0], 1)), np.array(X)), axis=1)
+        x_expand = np.concatenate((np.ones((X_scaled.shape[0], 1)), X_scaled), axis=1)
         num_batches = x_expand.shape[0] // self.batch_size
-
-                
         # Initializing weights with zeros. Therefore now shape : number of features + 1 for bias
         w = np.zeros((x_expand.shape[1], 1))
+        y = np.array(y).reshape(-1, 1)
         
         for _ in range(self.n_iters):
             # shuffling data at each iteration to improve convergence speed
@@ -77,9 +73,10 @@ class SGDRegression:
                 
                 y_hat = x_expand_batch @ w
                 error = y_batch - y_hat
-            
-                # Calculate Gradient: (2/N) * X^T * error
-                gradient = - (1. / self.batch_size) * 2. * (x_expand_batch.T @ error)
+
+                # Calculate Regularizated Gradient: (2/N) * X^T * error + 2 * alpha * w
+                gradient = -(2. / self.batch_size) * (x_expand_batch.T @ error)
+                gradient[1:] += 2 * self.alpha * w[1:]
                 
                 # Updated weights and move to opposite direction of the gradient
                 w -= self.lr * gradient          
@@ -98,5 +95,8 @@ class SGDRegression:
         Returns:
             numpy array of shape (n_samples,)
         """
+        X = np.array(X)
+        X_scaled = (X - self.mean_) / self.std_
+
         # y = X*w + b
-        return (X @ self.weights_ + self.bias_).flatten()
+        return (X_scaled @ self.weights_ + self.bias_).flatten()
