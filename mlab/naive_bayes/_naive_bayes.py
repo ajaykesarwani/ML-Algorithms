@@ -20,7 +20,7 @@ class GaussianNaiveBayes:
         
         # Handling edge case empty input
         if X.size == 0 or y.size == 0:
-            return self
+            raise ValueError("Input data X or labels y cannot be empty.")
         
         self.classes_ = np.unique(y)
         n_samples, n_features = X.shape
@@ -68,10 +68,10 @@ class GaussianNaiveBayes:
         Returns:
             numpy array of shape (n_samples,) with predicted class labels
         """
-        # when data is empty then return empty array
+        # when data is empty then raise error
         X = np.array(X, dtype=np.float64)
         if X.size == 0:
-            return np.array([])
+            raise ValueError("Cannot predict on empty input X.")
         
         log_posteriors = self._get_log_posteriors(X)
         class_indices = np.argmax(log_posteriors, axis=1)
@@ -87,10 +87,10 @@ class GaussianNaiveBayes:
         Returns:
             numpy array of shape (n_samples, n_classes)
         """
-        # when data is empty then return empty array
+        # when data is empty then raise error
         X = np.array(X, dtype=np.float64)
         if X.size == 0:
-            return np.array([[]])
+            raise ValueError("Cannot predict probabilities on empty input X.")
         
         log_posteriors = self._get_log_posteriors(X)
         
@@ -122,8 +122,8 @@ class MultinomialNaiveBayes:
         
         # Handling edge case empty input
         if X.size == 0 or y.size == 0:
-            return self
-        
+            raise ValueError("Input data X or labels y cannot be empty.")
+
         self.classes_ = np.unique(y)
         n_samples, n_features = X.shape
         n_classes = len(self.classes_)
@@ -159,6 +159,11 @@ class MultinomialNaiveBayes:
         Returns:
             numpy array of shape (n_samples,) with predicted class labels
         """
+        # when data is empty then raise error
+        X = np.array(X, dtype=np.float64)
+        if X.size == 0:
+            raise ValueError("Cannot predict on empty input X.")
+        
         log_posteriors = self._get_log_posteriors(X)
         class_indices = np.argmax(log_posteriors, axis=1)
         return self.classes_[class_indices]
@@ -173,6 +178,11 @@ class MultinomialNaiveBayes:
         Returns:
             numpy array of shape (n_samples, n_classes)
         """
+        # when data is empty then raise error
+        X = np.array(X, dtype=np.float64)
+        if X.size == 0:
+            raise ValueError("Cannot predict probabilities on empty input X.")
+
         log_posteriors = self._get_log_posteriors(X)
         
         # Log-Sum-Exp stabilization Trick
