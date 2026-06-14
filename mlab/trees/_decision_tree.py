@@ -1,13 +1,13 @@
 import numpy as np
-from mlab.trees._tree_utils import Node, gini_impurity, majority_class, compute_class_weights
+from mlab.trees._tree_utils import Node, gini_impurity, majority_class
 
 
 class DecisionTree:
-    def __init__(self, max_depth=5, min_samples_split=2, min_samples_leaf=1, class_weight=None):
+    def __init__(self, max_depth=5, min_samples_split=2, min_samples_leaf=1):
         self.max_depth = max_depth
         self.min_samples_split = min_samples_split
         self.min_samples_leaf = min_samples_leaf
-        self.class_weight = class_weight  # dict or None
+
         self.feature_importances_ = None
         self.feature_names_ = None
         self.root = None
@@ -26,10 +26,6 @@ class DecisionTree:
             raise ValueError(f"y must be 1D, got shape {y.shape}")
         if X.shape[0] != y.shape[0]:
             raise ValueError("X and y must have the same number of samples")
-
-        # If no class_weight provided, compute from data (to handle imbalance)
-        if self.class_weight is None:
-            self.class_weight = compute_class_weights(y)
 
         n_samples, n_features = X.shape
         self.feature_importances_ = np.zeros(n_features, dtype=np.float64)
@@ -88,17 +84,6 @@ class DecisionTree:
                     + (n_right / n_samples) * gini_right
                 )
 
-                # class-weight boost for the minority class
-                if self.class_weight is not None and len(self.class_weight) > 0:
-                    minority_label = max(self.class_weight, key=self.class_weight.get)
-                    n_min_left = np.sum(y_sort[: i + 1] == minority_label)
-                    n_min_right = np.sum(y_sort[i + 1 :] == minority_label)
-                    weight_factor = (
-                        n_min_left / (n_left + 1e-8)
-                        + n_min_right / (n_right + 1e-8)
-                    ) * 0.5  # mild boost
-                    gain *= (1.0 + weight_factor)
-
                 if gain > best_gain:
                     best_gain = gain
                     split_idx = feat_idx
@@ -109,11 +94,6 @@ class DecisionTree:
     def _grow_tree(self, X, y, depth):
         self._actual_depth = max(self._actual_depth, depth)
         n_samples, n_features = X.shape
-
-        # guard: no samples -> default leaf
-        if n_samples == 0:
-            return Node(value=0)
-
         num_labels = len(np.unique(y))
 
         # stopping conditions (early stopping)
@@ -123,13 +103,13 @@ class DecisionTree:
             or n_samples < self.min_samples_split
             or n_samples < 2 * self.min_samples_leaf
         ):
-            leaf_value = self._weighted_majority(y)
+            leaf_value = majority_class(y)
             return Node(value=leaf_value)
 
         feat_idx, thresh, gain = self._best_split(X, y, n_samples, n_features)
 
         if gain <= 0.0 or feat_idx is None or thresh is None:
-            leaf_value = self._weighted_majority(y)
+            leaf_value = majority_class(y)
             return Node(value=leaf_value)
 
         # accumulate feature importance (normalized later)
@@ -142,25 +122,6 @@ class DecisionTree:
         right_child = self._grow_tree(X[right_mask], y[right_mask], depth + 1)
 
         return Node(feature=feat_idx, threshold=thresh, left=left_child, right=right_child)
-
-    def _weighted_majority(self, y):
-        """
-        Choose leaf class as weighted majority according to class_weight.
-        """
-        y = np.asarray(y, dtype=np.int64)
-        if y.size == 0:
-            return 0
-
-        counts = np.bincount(y)
-        weights = np.ones_like(counts, dtype=float)
-
-        if self.class_weight is not None:
-            for label, w in self.class_weight.items():
-                if label < len(weights):
-                    weights[label] = w
-
-        weighted_counts = counts * weights
-        return int(np.argmax(weighted_counts))
 
     def predict(self, X):
         """
