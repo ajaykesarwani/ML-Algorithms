@@ -23,8 +23,8 @@ def gini_impurity(y):
     if m == 0:
         return 0.0
     counts = np.bincount(y)
-    p = counts / m
-    return 1.0 - np.sum(p ** 2)
+    probabilities = counts / m
+    return 1.0 - np.sum(probabilities ** 2)
 
 
 def majority_class(y):
@@ -43,3 +43,21 @@ def set_global_seed(random_state=None):
     """
     if random_state is not None:
         np.random.seed(random_state)
+
+
+def compute_class_weights(y):
+    """
+    Compute per-class weights for imbalanced data
+    """
+    y = np.asarray(y, dtype=np.int64)
+    counts = np.bincount(y)
+    total = counts.sum()
+    n_classes = len(counts)
+    # avoid division by zero if some class is missing
+    weights = {}
+    for label in range(n_classes):
+        if counts[label] == 0:
+            weights[label] = 0.0
+        else:
+            weights[label] = float(total / (n_classes * counts[label]))
+    return weights
