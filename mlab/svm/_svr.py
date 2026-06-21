@@ -1,6 +1,6 @@
 import numpy as np
-from svm._svm import BaseSVM
-from svm._svm_utils import compute_kernel_matrix
+from ._svm import BaseSVM
+from ._svm_utils import compute_kernel_matrix
 
 class SVR(BaseSVM):   
     def __init__(self, kernel: str = 'rbf', C: float = 1.0, epsilon: float = 0.1, degree: int = 3, 
