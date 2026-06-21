@@ -38,7 +38,7 @@ class SVR(BaseSVM):
             subgrad_direction[grad_lower] = -1.0
             
             # Analytical gradients
-            dw = (self.weights_ / self.C) + np.dot(subgrad_direction, K) / n_samples
+            dw = (self.weights_ / (self.C * n_samples)) + np.dot(subgrad_direction, K) / n_samples
             db = np.sum(subgrad_direction) / n_samples
             
             self.weights_ -= self.lr * dw
