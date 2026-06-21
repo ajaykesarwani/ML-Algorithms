@@ -4,7 +4,7 @@ from ._svm_utils import compute_kernel_matrix
 
 class SVC(BaseSVM):
     def __init__(self, kernel: str = 'rbf', C: float = 1.0, degree: int = 3, 
-                 lr: float = 0.001, tol: float = 1e-4, max_iter: int = 1000, 
+                 lr: float = 0.01, tol: float = 1e-4, max_iter: int = 1000, 
                  gamma: float = 1.0, verbose: bool = False):
         super().__init__(C=C, lr=lr, tol=tol, max_iter=max_iter, 
                          kernel=kernel, degree=degree, gamma=gamma, verbose=verbose)
@@ -37,7 +37,7 @@ class SVC(BaseSVM):
             
             # Loss and updates computation 
             # Subgradient of Hinge Loss w.r.t weights coefficient is -y * K_row
-            dw = (self.weights_ / self.C) - np.dot(condition * y_internal, K) / n_samples
+            dw = (self.weights_ / (self.C * n_samples)) - np.dot(condition * y_internal, K) / n_samples
             db = -np.sum(condition * y_internal) / n_samples
             
             self.weights_ -= self.lr * dw
