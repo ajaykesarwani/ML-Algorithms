@@ -5,7 +5,11 @@ from ._svm_utils import compute_kernel_matrix
 class SVC(BaseSVM):
     def __init__(self, kernel: str = 'rbf', C: float = 1.0, degree: int = 3, 
                  lr: float = 0.01, tol: float = 1e-4, max_iter: int = 1000, 
+<<<<<<< HEAD
                  gamma: float = 1.0, verbose: bool = False, random_state: int = None):
+=======
+                 gamma: float = 1.0, verbose: bool = False):
+>>>>>>> 6246df0029279255e3f2e28ecf514960ea9993f0
         super().__init__(C=C, lr=lr, tol=tol, max_iter=max_iter, 
                          kernel=kernel, degree=degree, gamma=gamma, 
                          verbose=verbose, random_state=random_state)
