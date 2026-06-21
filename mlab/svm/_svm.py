@@ -3,17 +3,17 @@ from ._svm_utils import compute_kernel_matrix
 
 class BaseSVM:
     def __init__(self, C: float = 1.0, lr: float = 0.001, tol: float = 1e-4, max_iter: int = 1000,
-                 kernel: str = 'rbf', degree: int = 3, gamma: float = 1.0, verbose: bool = False):
+                 kernel: str = 'rbf', degree: int = 3, gamma: float = 1.0, verbose: bool = False, 
+                 random_state: int = None):
         self.C = C
         self.lr = lr
         self.tol = tol
         self.max_iter = max_iter
-        assert kernel in ('linear', 'rbf'), 'Kernel must be either linear or rbf'
         self.kernel = kernel
         self.degree = degree
         self.gamma = gamma
         self.verbose = verbose
-
+        self.random_state = random_state
         self.X_fit_ = None
         self.weights_ = None  
         self.intercept_ = 0.0
@@ -23,6 +23,13 @@ class BaseSVM:
         self.support_ = None
         self.alpha_ = None
         self.n_support_ = None
+
+        self._mean = None
+        self._std = None
+
+        if self.random_state is not None:
+            np.random.seed(self.random_state)
+
 
     def _compute_decision_values(self, X: np.ndarray) -> np.ndarray:
         """Computes the raw f(x) projections across the selected kernel layer space."""
@@ -40,3 +47,13 @@ class BaseSVM:
         self.support_vectors_ = X_orig[mask]
         self.n_support_ = len(self.support_)
         self.alpha_ = np.ones(self.n_support_) / max(1, self.n_support_)
+    
+    def _normalize_features(self, X: np.ndarray, training: bool = False) -> np.ndarray:
+        """Standardizes features by removing the mean and scaling to unit variance."""
+        if training:
+            self._mean = np.mean(X, axis=0)
+            self._std = np.std(X, axis=0)
+            # Prevent zero-division anomalies on constant noise columns
+            self._std[self._std == 0.0] = 1.0
+        
+        return (X - self._mean) / self._std
