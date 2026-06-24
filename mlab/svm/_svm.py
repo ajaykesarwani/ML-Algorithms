@@ -1,5 +1,5 @@
 import numpy as np
-from ._svm_utils import compute_kernel_matrix
+from _svm_utils import compute_kernel_matrix
 
 class BaseSVM:
     def __init__(self, C: float = 1.0, lr: float = 0.001, tol: float = 1e-4, max_iter: int = 1000,
