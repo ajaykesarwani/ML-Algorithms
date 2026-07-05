@@ -99,13 +99,8 @@ class SoftmaxLayer:
         return self.output
 
     def backward(self, grad_output):
-        n_samples, _ = self.output.shape
-        grad_input = np.empty_like(grad_output)
-        for i in range(n_samples):
-            y = self.output[i].reshape(-1, 1)               # (n_classes, 1)
-            jacobian = np.diagflat(y) - y @ y.T              # (n_classes, n_classes)
-            grad_input[i] = jacobian @ grad_output[i]
-        return grad_input
+        sum_grad_out = np.sum(grad_output * self.output, axis=1, keepdims=True)
+        return self.output * (grad_output - sum_grad_out)
 
 _ACTIVATIONS = {
     "relu": ReLULayer,
