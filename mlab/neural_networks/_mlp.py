@@ -95,7 +95,7 @@ class SoftmaxLayer:
     def __call__(self, X):
         shifted = X - np.max(X, axis=1, keepdims=True)
         exp_scores = np.exp(shifted)
-        self.output = exp_scores / np.sum(exp_scores, axis=1, keepdims=True)
+        self.output = exp_scores / (np.sum(exp_scores, axis=1, keepdims=True) + 1e-15)
         return self.output
 
     def backward(self, grad_output):
@@ -174,13 +174,13 @@ class MLPRegressor:
         for layer in self.layers_:
             if hasattr(layer, "update"):
                 layer.update(self.lr, self.alpha)
-
-    def fit(self, X, y):
+    
+    def fit(self, X, y, batch_size=32, tol=1e-4, n_iter_no_change=10):
         """
         Train the network using backpropagation.
         """
-        X = np.asarray(X, dtype=float)
-        y = np.asarray(y, dtype=float)
+        X = np.asarray(X, dtype=np.float64)
+        y = np.asarray(y, dtype=np.float64)
 
         self._y_was_1d = (y.ndim == 1)
         if self._y_was_1d:
@@ -192,24 +192,54 @@ class MLPRegressor:
         rng = np.random.default_rng(self.random_state)
         self.layers_ = self._build_network(n_features, n_outputs, rng)
         self.loss_curve_ = []
+        
+        # Variables for early stopping
+        best_loss = np.inf
+        no_improvement_count = 0
 
-        for _ in range(self.epochs):
-            # ----- forward pass -----
-            y_pred = self._forward(X)
+        for epoch in range(self.epochs):
+            # ----- Shuffle data for mini-batches -----
+            indices = np.arange(n_samples)
+            rng.shuffle(indices)
+            X_shuffled = X[indices]
+            y_shuffled = y[indices]
 
-            # ----- loss (MSE + L2 penalty, for monitoring only) -----
-            mse = np.mean((y_pred - y) ** 2)
+            # ----- Mini-batch processing -----
+            for start_idx in range(0, n_samples, batch_size):
+                end_idx = min(start_idx + batch_size, n_samples)
+                X_batch = X_shuffled[start_idx:end_idx]
+                y_batch = y_shuffled[start_idx:end_idx]
+                batch_samples = X_batch.shape[0]
+
+                # Forward pass on batch
+                y_pred_batch = self._forward(X_batch)
+
+                # Backward pass on batch
+                grad = 2.0 * (y_pred_batch - y_batch) / batch_samples
+                self._backward_and_update(grad)
+
+            # ----- Calculate full epoch loss for monitoring & early stopping -----
+            full_pred = self._forward(X)
+            mse = np.mean((full_pred - y) ** 2)
             l2_penalty = self.alpha * sum(
                 np.sum(layer.weight ** 2)
                 for layer in self.layers_
                 if hasattr(layer, "weight")
             )
-            self.loss_curve_.append(mse + l2_penalty)
+            
+            current_loss = mse + l2_penalty
+            self.loss_curve_.append(current_loss)
 
-            # ----- backward pass -----
-            # d(MSE)/d(y_pred) = 2 * (y_pred - y) / n_samples
-            grad = 2.0 * (y_pred - y) / n_samples
-            self._backward_and_update(grad)
+            # ----- Early stopping logic -----
+            if current_loss > best_loss - tol:
+                no_improvement_count += 1
+            else:
+                best_loss = current_loss
+                no_improvement_count = 0
+
+            if no_improvement_count >= n_iter_no_change:
+                print(f"Early stopping triggered at epoch {epoch}")
+                break
 
         return self
 
@@ -221,7 +251,7 @@ class MLPRegressor:
             raise RuntimeError("This MLPRegressor instance is not fitted yet. "
                                 "Call 'fit' before using 'predict'.")
 
-        X = np.asarray(X, dtype=float)
+        X = np.asarray(X, dtype=np.float64)
         y_pred = self._forward(X)
 
         if getattr(self, "_y_was_1d", True) and y_pred.shape[1] == 1:
