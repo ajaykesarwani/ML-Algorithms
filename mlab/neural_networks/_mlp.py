@@ -26,8 +26,9 @@ class ModularLinearLayer:
         """Backward pass: compute gradients w.r.t. input, weight, and bias."""
         n_samples = self.X.shape[0]
 
-        self.grad_weight = self.X.T @ grad_output / n_samples
-        self.grad_bias = np.mean(grad_output, axis=0)
+        self.grad_weight = self.X.T @ grad_output 
+        self.grad_bias = np.sum(grad_output, axis=0)
+        
         grad_input = grad_output @ self.weight.T
         return grad_input
 
@@ -107,7 +108,7 @@ class MLPRegressor:
         self.hidden_layer_sizes = hidden_layer_sizes
 
         self.lr = learning_rate if learning_rate is not None else lr
-        self.learning_rate = self.lr
+        self.learning_rate = self.lr  # alias kept in sync
 
         if n_iterations is not None:
             self.epochs = n_iterations
