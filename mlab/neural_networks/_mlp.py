@@ -4,7 +4,7 @@ class ModularLinearLayer:
     """Fully connected (dense) layer."""
 
     def __init__(self, input_size, output_size, rng=None):
-        rng = rng if rng is not None else np.random.RandomState()
+        rng = rng if rng is not None else np.random.default_rng()
 
         limit = np.sqrt(1.0 / input_size)
         # weight matrix of shape (input_size, output_size)
@@ -24,7 +24,6 @@ class ModularLinearLayer:
 
     def backward(self, grad_output):
         """Backward pass: compute gradients w.r.t. input, weight, and bias."""
-        n_samples = self.X.shape[0]
 
         self.grad_weight = self.X.T @ grad_output 
         self.grad_bias = np.sum(grad_output, axis=0)
@@ -40,6 +39,9 @@ class ModularLinearLayer:
 
 class SigmoidLayer:
     """Sigmoid activation function."""
+    def __init__(self):
+        self.X = None
+        self.output = None
 
     def __call__(self, X):
         """Forward: 1 / (1 + exp(-X))"""
@@ -55,6 +57,10 @@ class SigmoidLayer:
 class TanhLayer:
     """Tanh activation function."""
 
+    def __init__(self):
+        self.X = None
+        self.output = None
+
     def __call__(self, X):
         self.output = np.tanh(X)
         return self.output
@@ -66,9 +72,14 @@ class TanhLayer:
 class ReLULayer:
     """ReLU activation function."""
 
+    def __init__(self):
+        self.X = None
+        self.output = None
+
     def __call__(self, X):
         self.X = X
-        return np.maximum(0.0, X)
+        self.output = np.maximum(0.0, X)
+        return self.output
 
     def backward(self, grad_output):
         return grad_output * (self.X > 0).astype(grad_output.dtype)
@@ -77,6 +88,10 @@ class ReLULayer:
 class SoftmaxLayer:
     """Softmax activation (for multi-class output)."""
 
+    def __init__(self):
+        self.X = None
+        self.output = None
+
     def __call__(self, X):
         shifted = X - np.max(X, axis=1, keepdims=True)
         exp_scores = np.exp(shifted)
@@ -84,7 +99,7 @@ class SoftmaxLayer:
         return self.output
 
     def backward(self, grad_output):
-        n_samples, n_classes = self.output.shape
+        n_samples, _ = self.output.shape
         grad_input = np.empty_like(grad_output)
         for i in range(n_samples):
             y = self.output[i].reshape(-1, 1)               # (n_classes, 1)
@@ -131,6 +146,7 @@ class MLPRegressor:
 
         self.layers_ = []       # list of layer objects (set after fit)
         self.loss_curve_ = []   
+        self._y_was_1d = False
 
     def _build_network(self, n_features, n_outputs, rng):
         """Construct the list of layers: Linear -> Activation -> ... -> Linear."""
@@ -173,7 +189,7 @@ class MLPRegressor:
         n_samples, n_features = X.shape
         n_outputs = y.shape[1]
 
-        rng = np.random.RandomState(self.random_state)
+        rng = np.random.default_rng(self.random_state)
         self.layers_ = self._build_network(n_features, n_outputs, rng)
         self.loss_curve_ = []
 
