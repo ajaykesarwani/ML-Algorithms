@@ -12,6 +12,12 @@ def get_patches(arr, patch_shape, strides):
     Returns:
         Patches array for convolution operation
     """
+    # For minimal architectures
+    pad_h = max(0, patch_shape[0] - arr.shape[1])
+    pad_w = max(0, patch_shape[1] - arr.shape[2])
+    if pad_h > 0 or pad_w > 0:
+        arr = np.pad(arr, ((0, 0), (0, pad_h), (0, pad_w), (0, 0)), mode='constant')
+
     res = np.lib.stride_tricks.sliding_window_view(arr, patch_shape, axis=(1, 2))
     res = np.moveaxis(res, 3, 5)
     return res[:, ::strides[0], ::strides[1], ...]
@@ -78,6 +84,7 @@ class ConvLayer:
         return (out_h, out_w, self.out_channels)
 
     def __call__(self, X):
+        self._prev_input = X
         self._input_shape = X.shape
         self._X_padded = self._pad(X)
         self._patches = get_patches(self._X_padded, self.kernel_size, self.stride)
@@ -146,6 +153,7 @@ class PoolingLayer:
         return (out_h, out_w, input_shape[2])
 
     def __call__(self, X):
+        self._previous_input = X
         self._input_shape = X.shape # ndarray: Input for gradient computation in backward pass
         X_padded = pad_images(X, self.padding)
         # Minimal architecture valid padding
