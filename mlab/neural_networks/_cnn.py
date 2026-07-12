@@ -87,7 +87,8 @@ class ConvLayer:
         # dW and dB (Reusing cached self._patches array)
         self._weight_grad = np.einsum('bxyhwc,bxyo->hwco', self._patches, upstream_grad) # ndarray: Gradient of the weight matrix
         if alpha is not None:
-            self._weight_grad += alpha * self.weight_
+            # In-place L2 regularization gradient
+            self._weight_grad += self.weight_ * alpha
         
         self._bias_grad = np.sum(upstream_grad, axis=(0, 1, 2)) # ndarray: Gradient of the bias vector
         
@@ -120,8 +121,11 @@ class ConvLayer:
         return dX
 
     def update(self, lr):
-        self.weight_ -= lr * self._weight_grad
-        self.bias_ -= lr * self._bias_grad
+        # In-place parameter updates to avoid intermediate arrays
+        self._weight_grad *= lr
+        self.weight_ -= self._weight_grad
+        self._bias_grad *= lr
+        self.bias_ -= self._bias_grad
 
 
 class PoolingLayer:
@@ -144,6 +148,7 @@ class PoolingLayer:
     def __call__(self, X):
         self._input_shape = X.shape # ndarray: Input for gradient computation in backward pass
         X_padded = pad_images(X, self.padding)
+        # Minimal architecture valid padding
         pad_h = max(0, self.kernel_size[0] - X_padded.shape[1])
         pad_w = max(0, self.kernel_size[1] - X_padded.shape[2])
         if pad_h > 0 or pad_w > 0:
@@ -200,14 +205,18 @@ class ModularLinearLayer:
     def backward(self, upstream_grad, alpha=None):
         self._weight_grad = np.dot(self._prev_input.T, upstream_grad) # ndarray: Gradient of the weight matrix
         if alpha is not None:
-            self._weight_grad += alpha * self.weight_
+            # In-place L2 regularization gradient
+            self._weight_grad += self.weight_ * alpha
             
         self._bias_grad = np.sum(upstream_grad, axis=0) # ndarray: Gradient of the bias vector
         return np.dot(upstream_grad, self.weight_.T)
 
     def update(self, lr):
-        self.weight_ -= lr * self._weight_grad
-        self.bias_ -= lr * self._bias_grad
+        # In-place parameter updates to avoid intermediate arrays
+        self._weight_grad *= lr
+        self.weight_ -= self._weight_grad
+        self._bias_grad *= lr
+        self.bias_ -= self._bias_grad
 
     def __repr__(self):
         return f"ModularLinearLayer(in_features={self.in_features}, out_features={self.out_features})"
@@ -239,7 +248,9 @@ class SoftmaxLayer:
     def __call__(self, X):
         shifted_X = X - np.max(X, axis=1, keepdims=True)
         np.exp(shifted_X, out=shifted_X)
-        self._prev_result = shifted_X / np.sum(shifted_X, axis=1, keepdims=True)  # ndarray: Previous softmax output for derivative calculation
+        # In-place division to avoid intermediate array
+        shifted_X /= np.sum(shifted_X, axis=1, keepdims=True)
+        self._prev_result = shifted_X  # ndarray: Previous softmax output for derivative calculation
         return self._prev_result
 
     def backward(self, upstream_grad):
@@ -334,6 +345,7 @@ class CNNClassifier:
         return out
 
     def _calculate_loss(self, logits, y):
+        # Avoid creating intermediate y_one_hot array
         correct_probs = logits[np.arange(len(y)), y]
         eps = 1e-9
         ce_loss = -np.mean(np.log(correct_probs + eps))
@@ -341,8 +353,9 @@ class CNNClassifier:
         l2_loss = 0
         for layer in self.layers:
             if hasattr(layer, 'weight_'):
-                l2_loss += np.sum(layer.weight_ ** 2)
-        l2_loss += np.sum(self.out_layer_.weight_ ** 2)
+                # Avoid temporary matrix allocation with vdot instead of ** 2
+                l2_loss += np.vdot(layer.weight_, layer.weight_)
+        l2_loss += np.vdot(self.out_layer_.weight_, self.out_layer_.weight_)
         
         return ce_loss, 0.5 * self.alpha * l2_loss
 
