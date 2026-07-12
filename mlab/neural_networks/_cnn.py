@@ -12,12 +12,6 @@ def get_patches(arr, patch_shape, strides):
     Returns:
         Patches array for convolution operation
     """
-    # Padding for minimal architecture
-    pad_h = max(0, patch_shape[0] - arr.shape[1])
-    pad_w = max(0, patch_shape[1] - arr.shape[2])
-    if pad_h > 0 or pad_w > 0:
-        arr = np.pad(arr, ((0,0), (0, pad_h), (0, pad_w), (0,0)), mode='constant')
-
     res = np.lib.stride_tricks.sliding_window_view(arr, patch_shape, axis=(1, 2))
     res = np.moveaxis(res, 3, 5)
     return res[:, ::strides[0], ::strides[1], ...]
@@ -63,6 +57,12 @@ class ConvLayer:
             pad_x = (self.kernel_size[0]-1) //2 ,int(np.ceil((self.kernel_size[0]-1) /2))
             pad_y = (self.kernel_size[1]-1) //2 ,int(np.ceil((self.kernel_size[1]-1) /2))
             return np.pad(X, [(0,0), pad_x, pad_y, (0,0)])
+        else:
+            # Minimal architecture valid padding
+            pad_h = max(0, self.kernel_size[0] - X.shape[1])
+            pad_w = max(0, self.kernel_size[1] - X.shape[2])
+            if pad_h > 0 or pad_w > 0:
+                return np.pad(X, ((0,0), (0, pad_h), (0, pad_w), (0,0)), mode='constant')
         return X
 
     def get_output_shape(self, input_shape):
@@ -71,22 +71,21 @@ class ConvLayer:
             out_h = int(np.ceil(h / self.stride[0]))
             out_w = int(np.ceil(w / self.stride[1]))
         else:
-            out_h = (h - self.kernel_size[0]) // self.stride[0] + 1
-            out_w = (w - self.kernel_size[1]) // self.stride[1] + 1
+            eff_h = max(h, self.kernel_size[0])
+            eff_w = max(w, self.kernel_size[1])
+            out_h = (eff_h - self.kernel_size[0]) // self.stride[0] + 1
+            out_w = (eff_w - self.kernel_size[1]) // self.stride[1] + 1
         return (out_h, out_w, self.out_channels)
 
     def __call__(self, X):
-        self._prev_input = X
-        X_padded = self._pad(X)
-        patches = get_patches(X_padded, self.kernel_size, self.stride)
-        return np.einsum('bxyhwc,hwco->bxyo', patches, self.weight_) + self.bias_
+        self._input_shape = X.shape
+        self._X_padded = self._pad(X)
+        self._patches = get_patches(self._X_padded, self.kernel_size, self.stride)
+        return np.einsum('bxyhwc,hwco->bxyo', self._patches, self.weight_) + self.bias_
 
     def backward(self, upstream_grad, alpha=None):
-        X_padded = self._pad(self._prev_input)
-        
-        # dW and dB
-        patches = get_patches(X_padded, self.kernel_size, self.stride)
-        self._weight_grad = np.einsum('bxyhwc,bxyo->hwco', patches, upstream_grad) # ndarray: Gradient of the weight matrix
+        # dW and dB (Reusing cached self._patches array)
+        self._weight_grad = np.einsum('bxyhwc,bxyo->hwco', self._patches, upstream_grad) # ndarray: Gradient of the weight matrix
         if alpha is not None:
             self._weight_grad += alpha * self.weight_
         
@@ -94,36 +93,29 @@ class ConvLayer:
         
         # dX
         b, h_out, w_out, out_c = upstream_grad.shape # int: Number of samples, int: Output height, int: Output width, int: Number of output channels
-        _, h_in, w_in, in_c = X_padded.shape # int: Number of samples, int: Input height, int: Input width, int: Number of input channels
-        
-        # Dilate upstream grad to handle strides
-        dilated_grad = np.zeros((b, (h_out-1)*self.stride[0] + 1, (w_out-1)*self.stride[1] + 1, out_c))
-        dilated_grad[:, ::self.stride[0], ::self.stride[1], :] = upstream_grad 
         
         pad_h = self.kernel_size[0] - 1
         pad_w = self.kernel_size[1] - 1
-        grad_padded = np.pad(dilated_grad, ((0,0), (pad_h, pad_h), (pad_w, pad_w), (0,0)), mode='constant')
+        
+        # Optimize memory: allocate grad_padded directly without intermediate dilated_grad
+        H_padded = (h_out-1)*self.stride[0] + 1 + 2*pad_h
+        W_padded = (w_out-1)*self.stride[1] + 1 + 2*pad_w
+        grad_padded = np.zeros((b, H_padded, W_padded, out_c))
+        grad_padded[:, pad_h:H_padded-pad_h:self.stride[0], pad_w:W_padded-pad_w:self.stride[1], :] = upstream_grad
         
         upstream_patches = get_patches(grad_padded, self.kernel_size, (1, 1))
         weight_flipped = np.flip(self.weight_, axis=(0, 1))
         
         dX_padded = np.einsum('hwco,bxyhwo->bxyc', weight_flipped, upstream_patches)
         
-        # Remove padding from dX to match original X shape
+        # Remove padding from dX to match exactly self._input_shape
+        _, h_in, w_in, _ = self._input_shape
         if self.padding == 'same':
             pad_h_top = (self.kernel_size[0] - 1) // 2 
             pad_w_left = (self.kernel_size[1] - 1) // 2 
-            pad_h_bot = int(np.ceil((self.kernel_size[0]-1)/2)) 
-            pad_w_right = int(np.ceil((self.kernel_size[1]-1)/2)) 
-            
-            end_h = dX_padded.shape[1] - pad_h_bot
-            end_w = dX_padded.shape[2] - pad_w_right
-            if end_h <= pad_h_top: end_h = None 
-            if end_w <= pad_w_left: end_w = None 
-            
-            dX = dX_padded[:, pad_h_top:end_h, pad_w_left:end_w, :] 
+            dX = dX_padded[:, pad_h_top:pad_h_top+h_in, pad_w_left:pad_w_left+w_in, :] 
         else:
-            dX = dX_padded 
+            dX = dX_padded[:, 0:h_in, 0:w_in, :] 
             
         return dX
 
@@ -143,14 +135,20 @@ class PoolingLayer:
 
     def get_output_shape(self, input_shape):
         h, w = input_shape[0], input_shape[1]
-        out_h = (h + 2 * self.padding - self.kernel_size[0]) // self.stride[0] + 1
-        out_w = (w + 2 * self.padding - self.kernel_size[1]) // self.stride[1] + 1
+        eff_h = max(h + 2 * self.padding, self.kernel_size[0])
+        eff_w = max(w + 2 * self.padding, self.kernel_size[1])
+        out_h = (eff_h - self.kernel_size[0]) // self.stride[0] + 1
+        out_w = (eff_w - self.kernel_size[1]) // self.stride[1] + 1
         return (out_h, out_w, input_shape[2])
 
     def __call__(self, X):
-        self._previous_input = X # ndarray: Input for gradient computation in backward pass
+        self._input_shape = X.shape # ndarray: Input for gradient computation in backward pass
         X_padded = pad_images(X, self.padding)
-        self._padded_shape = X_padded.shape # ndarray: Padded input shape
+        pad_h = max(0, self.kernel_size[0] - X_padded.shape[1])
+        pad_w = max(0, self.kernel_size[1] - X_padded.shape[2])
+        if pad_h > 0 or pad_w > 0:
+            X_padded = np.pad(X_padded, ((0,0), (0, pad_h), (0, pad_w), (0,0)), mode='constant')
+        self._X_padded_shape = X_padded.shape # ndarray: Padded input shape
         patches = get_patches(X_padded, self.kernel_size, self.stride)
         
         b, out_h, out_w, kh, kw, c = patches.shape
@@ -161,7 +159,7 @@ class PoolingLayer:
 
     def backward(self, upstream_grad):
         b, out_h, out_w, c = upstream_grad.shape
-        dX_padded = np.zeros(self._padded_shape)
+        dX_padded = np.zeros(self._X_padded_shape)
         
         # Vectorized gradient routing
         n_idx = np.arange(b)[:, None, None, None]
@@ -177,9 +175,8 @@ class PoolingLayer:
         
         np.add.at(dX_padded, (n_idx, max_h, max_w, c_idx), upstream_grad)
                         
-        if self.padding > 0:
-            return dX_padded[:, self.padding:-self.padding, self.padding:-self.padding, :]
-        return dX_padded
+        _, h_in, w_in, _ = self._input_shape
+        return dX_padded[:, self.padding:self.padding+h_in, self.padding:self.padding+w_in, :]
 
 
 class ModularLinearLayer:
@@ -295,11 +292,9 @@ class CNNClassifier:
                 # Forward
                 out = self._forward(X_batch)
                 
-                # Cross entropy grad
-                y_one_hot = np.zeros_like(out)
-                y_one_hot[np.arange(len(y_batch)), y_batch] = 1
-                
-                grad_ce = -y_one_hot / (out + 1e-9) / len(y_batch)
+                # Cross entropy grad: Avoid creating intermediate y_one_hot array
+                grad_ce = np.zeros_like(out)
+                grad_ce[np.arange(len(y_batch)), y_batch] = -1.0 / (out[np.arange(len(y_batch)), y_batch] + 1e-9) / len(y_batch)
                 
                 # Backward
                 grad = self.softmax_layer_.backward(grad_ce)
@@ -339,10 +334,9 @@ class CNNClassifier:
         return out
 
     def _calculate_loss(self, logits, y):
-        y_one_hot = np.zeros_like(logits)
-        y_one_hot[np.arange(len(y)), y] = 1
+        correct_probs = logits[np.arange(len(y)), y]
         eps = 1e-9
-        ce_loss = -np.mean(np.sum(y_one_hot * np.log(logits + eps), axis=1))
+        ce_loss = -np.mean(np.log(correct_probs + eps))
         
         l2_loss = 0
         for layer in self.layers:
