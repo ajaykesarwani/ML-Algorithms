@@ -12,6 +12,12 @@ def get_patches(arr, patch_shape, strides):
     Returns:
         Patches array for convolution operation
     """
+    # Padding for minimal architecture
+    pad_h = max(0, patch_shape[0] - arr.shape[1])
+    pad_w = max(0, patch_shape[1] - arr.shape[2])
+    if pad_h > 0 or pad_w > 0:
+        arr = np.pad(arr, ((0,0), (0, pad_h), (0, pad_w), (0,0)), mode='constant')
+
     res = np.lib.stride_tricks.sliding_window_view(arr, patch_shape, axis=(1, 2))
     res = np.moveaxis(res, 3, 5)
     return res[:, ::strides[0], ::strides[1], ...]
@@ -144,32 +150,32 @@ class PoolingLayer:
     def __call__(self, X):
         self._previous_input = X # ndarray: Input for gradient computation in backward pass
         X_padded = pad_images(X, self.padding)
-        patches = get_patches(X_padded, self.kernel_size, self.stride)
-        return np.max(patches, axis=(3, 4)) # ndarray: Max pooled output
-
-    def backward(self, upstream_grad):
-        X_padded = pad_images(self._previous_input, self.padding)
+        self._padded_shape = X_padded.shape # ndarray: Padded input shape
         patches = get_patches(X_padded, self.kernel_size, self.stride)
         
         b, out_h, out_w, kh, kw, c = patches.shape
         patches_flat = patches.reshape((b, out_h, out_w, kh * kw, c))
-        max_idx = np.argmax(patches_flat, axis=3)
+        self._max_idx = np.argmax(patches_flat, axis=3)
         
-        dX_padded = np.zeros_like(X_padded)
+        return np.max(patches_flat, axis=3) # ndarray: Max pooled output
+
+    def backward(self, upstream_grad):
+        b, out_h, out_w, c = upstream_grad.shape
+        dX_padded = np.zeros(self._padded_shape)
         
-        # Route gradients back to the maximum locations
-        for n in range(b):
-            for i in range(out_h):
-                for j in range(out_w):
-                    for ch in range(c):
-                        h_start = i * self.stride[0]
-                        w_start = j * self.stride[1]
-                        
-                        idx = max_idx[n, i, j, ch]
-                        max_h = h_start + (idx // kw)
-                        max_w = w_start + (idx % kw)
-                        
-                        dX_padded[n, max_h, max_w, ch] += upstream_grad[n, i, j, ch]
+        # Vectorized gradient routing
+        n_idx = np.arange(b)[:, None, None, None]
+        i_idx = np.arange(out_h)[None, :, None, None]
+        j_idx = np.arange(out_w)[None, None, :, None]
+        c_idx = np.arange(c)[None, None, None, :]
+        
+        kh, kw = self.kernel_size
+        stride_h, stride_w = self.stride
+        
+        max_h = (i_idx * stride_h) + (self._max_idx // kw)
+        max_w = (j_idx * stride_w) + (self._max_idx % kw)
+        
+        np.add.at(dX_padded, (n_idx, max_h, max_w, c_idx), upstream_grad)
                         
         if self.padding > 0:
             return dX_padded[:, self.padding:-self.padding, self.padding:-self.padding, :]
@@ -218,11 +224,12 @@ class ReLULayer:
         pass
 
     def __call__(self, X):
-        self._prev_result = np.maximum(0, X) # ndarray: Previous activation output for derivative calculation
+        self._prev_result = np.maximum(X, 0, out=X) # ndarray: Previous activation output for derivative calculation
         return self._prev_result
 
     def backward(self, upstream_grad):
-        return upstream_grad * (self._prev_result > 0)
+        upstream_grad *= (self._prev_result > 0)
+        return upstream_grad
 
 
 class SoftmaxLayer:
@@ -234,17 +241,14 @@ class SoftmaxLayer:
 
     def __call__(self, X):
         shifted_X = X - np.max(X, axis=1, keepdims=True)
-        exp_X = np.exp(shifted_X)
-        self._prev_result = exp_X / np.sum(exp_X, axis=1, keepdims=True)  # ndarray: Previous softmax output for derivative calculation
+        np.exp(shifted_X, out=shifted_X)
+        self._prev_result = shifted_X / np.sum(shifted_X, axis=1, keepdims=True)  # ndarray: Previous softmax output for derivative calculation
         return self._prev_result
 
     def backward(self, upstream_grad):
-        b, c = self._prev_result.shape
-        dX = np.zeros_like(upstream_grad)
-        for i in range(b):
-            y = self._prev_result[i].reshape(-1, 1)
-            jacobian = np.diagflat(y) - np.dot(y, y.T)
-            dX[i] = np.dot(jacobian, upstream_grad[i])
+        # vectorized multiplication
+        dX = self._prev_result * upstream_grad
+        dX -= self._prev_result * np.sum(dX, axis=1, keepdims=True)
         return dX
 
 
